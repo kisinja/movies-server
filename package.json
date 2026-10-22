@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev"
+    "postinstall": "prisma generate",
+    "build": "prisma generate"
   },
   "keywords": [
     "express",
