@@ -7,6 +7,7 @@ const authRoutes = require("./routes/auth.routes");
 const paymentRoutes = require("./routes/payment.routes");
 const searchRoutes = require("./routes/search.routes");
 const meRoute = require("./routes/me.routes");
+const feedRoutes = require("./routes/feed.route");
 const { requireAuth } = require("./middleware/auth");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 
@@ -31,26 +32,8 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/me", meRoute);
 app.use("/api/", playerRoutes);
+app.use('/api/feed', feedRoutes);
 
-/* app.get("/api/me", requireAuth, async (req, res, next) => {
-  try {
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user)
-      return res.status(404).json({ success: false, error: "Not found." });
-    res.json({
-      success: true,
-      user: { id: user.id, email: user.email, name: user.name },
-      subscription: {
-        active:
-          !!user.subscriptionExpiresAt &&
-          user.subscriptionExpiresAt > new Date(),
-        expiresAt: user.subscriptionExpiresAt,
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-}); */
 
 app.get("/", (req, res) => {
   res.json({
@@ -76,6 +59,11 @@ app.get("/", (req, res) => {
         tv: "GET /api/tv/:tmdbId",
         tvEpisode: "GET /api/tv/:tmdbId?season=1&episode=1",
       },
+      feed: {
+  home: "GET /api/feed?limit=12",
+  movies: "GET /api/feed/movies?limit=12",
+  tv: "GET /api/feed/tv?limit=12",
+},
     },
   });
 });
