@@ -18,7 +18,7 @@ app.use(
   express.json({
     // Paystack signs the exact raw bytes, so keep them for the webhook.
     verify: (req, res, buf) => {
-      req.rawBody = buf;
+      req.rawBody = buf.toString("utf-8");
     },
   }),
 );
