@@ -11,7 +11,15 @@ function requireAuth(req, res, next) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.userId = Number(payload.sub);
+
+    // UUID string ids — do NOT use Number()
+    const userId = payload.sub || payload.id;
+    if (!userId || typeof userId !== "string") {
+      return next(new AppError(401, "Your session is invalid or has expired."));
+    }
+
+    req.userId = userId;
+    req.user = payload;
     next();
   } catch {
     next(new AppError(401, "Your session is invalid or has expired."));
@@ -20,15 +28,21 @@ function requireAuth(req, res, next) {
 
 async function requireSubscription(req, res, next) {
   try {
+    if (!req.userId) {
+      return next(new AppError(401, "Please sign in."));
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
       select: { subscriptionExpiresAt: true, role: true },
     });
+
     if (!user) return next(new AppError(401, "Please sign in."));
 
     const active =
       user.role === "ADMIN" ||
       (user.subscriptionExpiresAt && user.subscriptionExpiresAt > new Date());
+
     if (!active) {
       return next(
         new AppError(
@@ -37,6 +51,7 @@ async function requireSubscription(req, res, next) {
         ),
       );
     }
+
     next();
   } catch (err) {
     next(err);

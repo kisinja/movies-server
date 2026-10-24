@@ -5,7 +5,7 @@ const { AppError } = require("../middleware/error-handler");
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BCRYPT_ROUNDS = 12;
-const TOKEN_LIFETIME = "1h";
+const TOKEN_LIFETIME = "7d"; // was 1h — short sessions force constant re-login
 
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
@@ -24,6 +24,7 @@ function getRequestBody(body) {
 
 function validateCredentials(body, includeName = false) {
   const { email, password, name } = getRequestBody(body);
+
   if (typeof email !== "string" || !EMAIL_PATTERN.test(email.trim())) {
     throw new AppError(400, "Please provide a valid email address.");
   }
@@ -58,18 +59,29 @@ function validateCredentials(body, includeName = false) {
 
 function toPublicUser(user) {
   return {
-    id: user.id,
+    id: user.id, // UUID string
     email: user.email,
-    name: user.name,
+    name: user.name ?? null,
+    role: user.role ?? "USER",
     createdAt: user.createdAt,
   };
 }
 
+/**
+ * Sign JWT with UUID in `sub` (string — never Number).
+ */
 function createToken(user, secret) {
-  return jwt.sign({}, secret, {
-    subject: String(user.id),
-    expiresIn: TOKEN_LIFETIME,
-  });
+  return jwt.sign(
+    {
+      email: user.email,
+      name: user.name ?? null,
+    },
+    secret,
+    {
+      subject: String(user.id), // -> payload.sub = UUID
+      expiresIn: TOKEN_LIFETIME,
+    },
+  );
 }
 
 async function register(req, res) {
@@ -77,9 +89,18 @@ async function register(req, res) {
   const jwtSecret = getJwtSecret();
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-  const user = await prisma.user.create({
-    data: { email, passwordHash, name },
-  });
+  let user;
+  try {
+    user = await prisma.user.create({
+      data: { email, passwordHash, name },
+    });
+  } catch (err) {
+    // Unique constraint on email
+    if (err.code === "P2002") {
+      throw new AppError(409, "An account with this email already exists.");
+    }
+    throw err;
+  }
 
   res.status(201).json({
     success: true,
@@ -92,6 +113,7 @@ async function register(req, res) {
 async function login(req, res) {
   const { email, password } = validateCredentials(req.body);
   const jwtSecret = getJwtSecret();
+
   const user = await prisma.user.findUnique({ where: { email } });
 
   if (
@@ -112,16 +134,35 @@ async function login(req, res) {
 
 async function getMe(req, res, next) {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user)
+    if (!req.userId) {
+      return res.status(401).json({ success: false, error: "Please sign in." });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        createdAt: true,
+        subscriptionExpiresAt: true,
+      },
+    });
+
+    if (!user) {
       return res.status(404).json({ success: false, error: "Not found." });
+    }
+
+    const active =
+      user.role === "ADMIN" ||
+      (!!user.subscriptionExpiresAt && user.subscriptionExpiresAt > new Date());
+
     res.json({
       success: true,
-      user: { id: user.id, email: user.email, name: user.name },
+      user: toPublicUser(user),
       subscription: {
-        active:
-          !!user.subscriptionExpiresAt &&
-          user.subscriptionExpiresAt > new Date(),
+        active,
         expiresAt: user.subscriptionExpiresAt,
       },
     });
