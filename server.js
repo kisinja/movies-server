@@ -14,8 +14,13 @@ const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const allowedOrigins = [
+  "https://triplem-ui.vercel.app",
+  "http://localhost:5173"
+]
+
 app.use(cors({
-  origin:process.env.ALLOWED_ORIGINS
+  origin:allowedOrigins,
 }));
 app.use(
   express.json({
