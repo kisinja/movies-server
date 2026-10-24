@@ -35,7 +35,7 @@ app.use(morgan("dev"));
 app.use("/api/auth", authRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/search", searchRoutes);
-app.use("/api/me", meRoute);
+app.use("/api", meRoute);
 app.use("/api/", playerRoutes);
 app.use('/api/feed', feedRoutes);
 
