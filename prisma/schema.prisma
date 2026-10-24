@@ -19,7 +19,7 @@ enum ROLES {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
+  id           String       @id @default(uuid())
   email        String    @unique
   passwordHash String?
   name         String?
@@ -37,7 +37,7 @@ model Payment {
   status            PaymentStatus @default(PENDING)
   provider          String?
   providerPaymentId String?       @unique
-  userId            Int
+  userId            String
   user              User          @relation(fields: [userId], references: [id], onDelete: Restrict)
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
