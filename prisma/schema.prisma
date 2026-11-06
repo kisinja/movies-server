@@ -19,14 +19,14 @@ enum ROLES {
 }
 
 model User {
-  id           String       @id @default(uuid())
-  email        String    @unique
-  passwordHash String?
-  name         String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  payments     Payment[]
-  role ROLES @default(USER)
+  id                    String    @id @default(uuid())
+  email                 String    @unique
+  passwordHash          String?
+  name                  String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  payments              Payment[]
+  role                  ROLES     @default(USER)
   subscriptionExpiresAt DateTime?
 }
 
@@ -37,10 +37,16 @@ model Payment {
   status            PaymentStatus @default(PENDING)
   provider          String?
   providerPaymentId String?       @unique
-  userId            String
-  user              User          @relation(fields: [userId], references: [id], onDelete: Restrict)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
 
-  @@index([userId, createdAt])
+  /// "weekly" | "monthly"
+  plan String @default("weekly") @db.VarChar(20)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
 }

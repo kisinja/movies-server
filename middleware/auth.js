@@ -3,6 +3,30 @@ const prisma = require("../lib/prisma");
 const { AppError } = require("./error-handler");
 
 const WEEKLY_PRICE_KES = 30;
+const MONTHLY_PRICE_KES = 100;
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+const PLANS = {
+  weekly: {
+    id: "weekly",
+    amountKes: WEEKLY_PRICE_KES,
+    durationMs: WEEK_MS,
+    label: "Weekly pass",
+  },
+  monthly: {
+    id: "monthly",
+    amountKes: MONTHLY_PRICE_KES,
+    durationMs: MONTH_MS,
+    label: "Monthly pass",
+  },
+};
+
+function getPlan(planId) {
+  if (planId === "monthly") return PLANS.monthly;
+  return PLANS.weekly;
+}
 
 function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
@@ -47,7 +71,7 @@ async function requireSubscription(req, res, next) {
       return next(
         new AppError(
           402,
-          `An active subscription is required (KES ${WEEKLY_PRICE_KES} per week).`,
+          `An active subscription is required (from KES ${WEEKLY_PRICE_KES}/week or KES ${MONTHLY_PRICE_KES}/month).`,
         ),
       );
     }
@@ -58,4 +82,13 @@ async function requireSubscription(req, res, next) {
   }
 }
 
-module.exports = { requireAuth, requireSubscription, WEEKLY_PRICE_KES };
+module.exports = {
+  requireAuth,
+  requireSubscription,
+  WEEKLY_PRICE_KES,
+  MONTHLY_PRICE_KES,
+  WEEK_MS,
+  MONTH_MS,
+  PLANS,
+  getPlan,
+};

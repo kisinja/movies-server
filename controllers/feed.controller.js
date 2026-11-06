@@ -1,84 +1,84 @@
 const axios = require("axios");
 const { AppError } = require("../middleware/error-handler");
 
-function mapMovie(item) {
+const VIDAPI_BASE = "https://vidapi.ru";
+
+/**
+ * Map VidAPI movie item to your standard format
+ */
+function mapVidapiMovie(item) {
   return {
     type: "movie",
-    tmdbId: item.id,
+    tmdbId: item.tmdb_id || null,
+    imdbId: item.imdb_id || null,
     title: item.title,
-    originalTitle: item.original_title,
-    releaseDate: item.release_date || null,
-    year: item.release_date ? item.release_date.slice(0, 4) : null,
-    overview: item.overview,
-    poster: item.poster_path
-      ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
-      : null,
-    backdrop: item.backdrop_path
-      ? `https://image.tmdb.org/t/p/w1280${item.backdrop_path}`
-      : null,
-    voteAverage: item.vote_average,
-    popularity: item.popularity,
+    year: item.year || null,
+    overview: null, // VidAPI listing doesn't provide overview
+    poster: item.poster_url || null,
+    backdrop: null,
+    voteAverage: item.rating ? parseFloat(item.rating) : null,
+    popularity: item.popularity ? parseFloat(item.popularity) : null,
+    genre: item.genre || null,
+    embedUrl: item.embed_url || null, // ready-to-use embed
   };
 }
 
-function mapTv(item) {
+/**
+ * Map VidAPI TV item
+ */
+function mapVidapiTv(item) {
   return {
     type: "tv",
-    tmdbId: item.id,
-    title: item.name,
-    originalTitle: item.original_name,
-    firstAirDate: item.first_air_date || null,
-    year: item.first_air_date ? item.first_air_date.slice(0, 4) : null,
-    overview: item.overview,
-    poster: item.poster_path
-      ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
-      : null,
-    backdrop: item.backdrop_path
-      ? `https://image.tmdb.org/t/p/w1280${item.backdrop_path}`
-      : null,
-    voteAverage: item.vote_average,
-    popularity: item.popularity,
+    tmdbId: item.tmdb_id || null,
+    imdbId: item.imdb_id || null,
+    title: item.title,
+    year: item.year || null,
+    overview: null,
+    poster: item.poster_url || null,
+    backdrop: null,
+    voteAverage: item.rating ? parseFloat(item.rating) : null,
+    popularity: item.popularity ? parseFloat(item.popularity) : null,
+    genre: item.genre || null,
+    embedUrl: item.embed_url || null,
   };
 }
 
 function getLimit(req) {
-  return Math.min(parseInt(req.query.limit, 10) || 12, 20);
+  return Math.min(parseInt(req.query.limit, 10) || 12, 24);
 }
 
 /**
  * GET /api/feed
- * Homepage feed: trending movies + trending TV + popular movies
+ * Homepage feed using VidAPI latest content
  */
 const getFeed = async (req, res, next) => {
   try {
     const limit = getLimit(req);
-    const key = process.env.TMDB_API_KEY;
 
-    const [trendingMoviesRes, trendingTvRes, popularMoviesRes] =
-      await Promise.all([
-        axios.get("https://api.themoviedb.org/3/trending/movie/day", {
-          params: { api_key: key, language: "en-US" },
-        }),
-        axios.get("https://api.themoviedb.org/3/trending/tv/day", {
-          params: { api_key: key, language: "en-US" },
-        }),
-        axios.get("https://api.themoviedb.org/3/movie/popular", {
-          params: { api_key: key, language: "en-US", page: 1 },
-        }),
-      ]);
+    const [moviesRes, tvRes] = await Promise.all([
+      axios.get(`${VIDAPI_BASE}/movies/latest/page-1.json`),
+      axios.get(`${VIDAPI_BASE}/tvshows/latest/page-1.json`),
+    ]);
+
+    const trendingMovies = (moviesRes.data.items || [])
+      .slice(0, limit)
+      .map(mapVidapiMovie);
+
+    const trendingTv = (tvRes.data.items || [])
+      .slice(0, limit)
+      .map(mapVidapiTv);
+
+    // Using latest movies also as "popular" for now
+    const popularMovies = (moviesRes.data.items || [])
+      .slice(0, limit)
+      .map(mapVidapiMovie);
 
     res.json({
       success: true,
       sections: {
-        trendingMovies: (trendingMoviesRes.data.results || [])
-          .slice(0, limit)
-          .map(mapMovie),
-        trendingTv: (trendingTvRes.data.results || [])
-          .slice(0, limit)
-          .map(mapTv),
-        popularMovies: (popularMoviesRes.data.results || [])
-          .slice(0, limit)
-          .map(mapMovie),
+        trendingMovies,
+        trendingTv,
+        popularMovies,
       },
     });
   } catch (err) {
@@ -92,21 +92,18 @@ const getFeed = async (req, res, next) => {
 const getFeedMovies = async (req, res, next) => {
   try {
     const limit = getLimit(req);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
 
     const { data } = await axios.get(
-      "https://api.themoviedb.org/3/trending/movie/day",
-      {
-        params: {
-          api_key: process.env.TMDB_API_KEY,
-          language: "en-US",
-        },
-      }
+      `${VIDAPI_BASE}/movies/latest/page-${page}.json`
     );
 
-    const results = (data.results || []).slice(0, limit).map(mapMovie);
+    const results = (data.items || []).slice(0, limit).map(mapVidapiMovie);
 
     res.json({
       success: true,
+      page: data.page,
+      totalPages: data.total_pages,
       count: results.length,
       results,
     });
@@ -121,21 +118,18 @@ const getFeedMovies = async (req, res, next) => {
 const getFeedTv = async (req, res, next) => {
   try {
     const limit = getLimit(req);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
 
     const { data } = await axios.get(
-      "https://api.themoviedb.org/3/trending/tv/day",
-      {
-        params: {
-          api_key: process.env.TMDB_API_KEY,
-          language: "en-US",
-        },
-      }
+      `${VIDAPI_BASE}/tvshows/latest/page-${page}.json`
     );
 
-    const results = (data.results || []).slice(0, limit).map(mapTv);
+    const results = (data.items || []).slice(0, limit).map(mapVidapiTv);
 
     res.json({
       success: true,
+      page: data.page,
+      totalPages: data.total_pages,
       count: results.length,
       results,
     });
