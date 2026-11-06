@@ -47,13 +47,13 @@ async function initialize(req, res) {
 
   const plan = getPlan(planId);
 
-  console.log("PAYMENT INITIALIZATION:", {
+  /* console.log("PAYMENT INITIALIZATION:", {
   requestedPlan: req.body?.plan,
   selectedPlan: plan.id,
   amountKes: plan.amountKes,
   durationMs: plan.durationMs,
   userId: user.id,
-});
+}); */
 
   const reference = `mw_${user.id}_${Date.now()}_${crypto
     .randomBytes(4)
@@ -108,14 +108,14 @@ async function fulfillReference(reference) {
   if (payment.status === "SUCCEEDED") return payment;
 
   // CHANGED: resolve plan from DB plan OR amount (>= 100 → monthly)
-  const plan = resolvePlan(payment);
+  /* const plan = resolvePlan(payment);
   console.log("PAYMENT FULFILLMENT:", {
   reference,
   databasePlan: payment.plan,
   databaseAmount: Number(payment.amount),
   resolvedPlan: plan.id,
   durationMs: plan.durationMs,
-});
+}); */
 
   const expectedKobo = Math.round(Number(payment.amount) * 100);
 
@@ -167,14 +167,14 @@ async function fulfillReference(reference) {
     const newExpiry = new Date(base.getTime() + plan.durationMs);
 
     // CHANGED: richer log so you can see weekly vs monthly in the terminal
-    console.log("FULFILL", {
+    /* console.log("FULFILL", {
       reference,
       dbPlan: payment.plan,
       amount: Number(payment.amount),
       resolved: plan.id,
       durationMs: plan.durationMs,
       expiry: newExpiry.toISOString(),
-    });
+    }); */
 
     await db.user.update({
       where: { id: user.id },
