@@ -1,49 +1,40 @@
 const axios = require("axios");
 const { AppError } = require("../middleware/error-handler");
 
-const VIDSRC_MIRRORS = [
-  "https://vidsrc.sh",
-  "https://vidsrc2.ru",
-  "https://vidsrc.ir",
-];
+const VIDAPI_BASE = "https://vaplayer.ru";
 
 /**
- * Check which VidSrc mirrors are currently responding
+ * Build VidAPI embed URL with optional customization
  */
-async function getWorkingEmbeds(type, tmdbId, season = null, episode = null) {
-  const path =
-    type === "tv" && season && episode
-      ? `/embed/tv/${tmdbId}/${season}/${episode}`
-      : type === "tv"
-        ? `/embed/tv/${tmdbId}`
-        : `/embed/movie/${tmdbId}`;
+function buildVidapiEmbed(type, id, season = null, episode = null, options = {}) {
+  let path;
 
-  const working = [];
+  if (type === "tv" && season && episode) {
+    path = `/embed/tv/${id}/${season}/${episode}`;
+  } else if (type === "tv") {
+    path = `/embed/tv/${id}`;
+  } else {
+    path = `/embed/movie/${id}`;
+  }
 
-  await Promise.all(
-    VIDSRC_MIRRORS.map(async (base) => {
-      const embedUrl = `${base}${path}`;
-      try {
-        const response = await axios.head(embedUrl, {
-          timeout: 3500,
-          validateStatus: (status) => status < 500,
-        });
-        if (response.status) working.push(embedUrl);
-      } catch {
-        // mirror down – ignore
-      }
-    }),
-  );
+  const params = new URLSearchParams();
 
-  // Keep preferred order
-  return VIDSRC_MIRRORS.map((base) => `${base}${path}`).filter((url) =>
-    working.includes(url),
-  );
+  if (options.primaryColor) {
+    params.set("primaryColor", options.primaryColor.replace("#", ""));
+  }
+  if (options.autoplay !== undefined) {
+    params.set("autoplay", options.autoplay ? "1" : "0");
+  }
+  if (options.lang) {
+    params.set("lang", options.lang);
+  }
+
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return `${VIDAPI_BASE}${path}${query}`;
 }
 
 /**
  * GET /api/movie/:tmdbId
- * or GET /movie/:tmdbId
  */
 const getMoviePlayer = async (req, res, next) => {
   try {
@@ -53,6 +44,7 @@ const getMoviePlayer = async (req, res, next) => {
       throw new AppError("tmdbId is required", 400);
     }
 
+    // Get movie details from TMDB
     const { data: details } = await axios.get(
       `https://api.themoviedb.org/3/movie/${tmdbId}`,
       {
@@ -60,12 +52,17 @@ const getMoviePlayer = async (req, res, next) => {
           api_key: process.env.TMDB_API_KEY,
           language: "en-US",
         },
-      },
+      }
     );
 
-    const workingEmbeds = await getWorkingEmbeds("movie", tmdbId);
-    const embedUrl =
-      workingEmbeds[0] || `${VIDSRC_MIRRORS[0]}/embed/movie/${tmdbId}`;
+    // Optional player customization from query params
+    const options = {
+      primaryColor: req.query.primaryColor,
+      autoplay: req.query.autoplay === "1" || req.query.autoplay === "true",
+      lang: req.query.lang,
+    };
+
+    const embedUrl = buildVidapiEmbed("movie", tmdbId, null, null, options);
 
     res.json({
       success: true,
@@ -78,17 +75,19 @@ const getMoviePlayer = async (req, res, next) => {
         poster: details.poster_path
           ? `https://image.tmdb.org/t/p/w500${details.poster_path}`
           : null,
+        backdrop: details.backdrop_path
+          ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
+          : null,
         runtime: details.runtime,
         genres: details.genres?.map((g) => g.name) || [],
+        voteAverage: details.vote_average,
       },
       player: {
         embedUrl,
-        allWorkingEmbeds: workingEmbeds,
         iframeHtml: `<iframe src="${embedUrl}" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>`,
       },
     });
   } catch (err) {
-    // TMDB 404
     if (err.response?.status === 404) {
       return next(new AppError("Movie not found on TMDB", 404));
     }
@@ -110,6 +109,7 @@ const getTvPlayer = async (req, res, next) => {
       throw new AppError("tmdbId is required", 400);
     }
 
+    // Get TV show details from TMDB
     const { data: details } = await axios.get(
       `https://api.themoviedb.org/3/tv/${tmdbId}`,
       {
@@ -117,15 +117,16 @@ const getTvPlayer = async (req, res, next) => {
           api_key: process.env.TMDB_API_KEY,
           language: "en-US",
         },
-      },
+      }
     );
 
-    const workingEmbeds = await getWorkingEmbeds("tv", tmdbId, season, episode);
-    const embedUrl =
-      workingEmbeds[0] ||
-      (season && episode
-        ? `${VIDSRC_MIRRORS[0]}/embed/tv/${tmdbId}/${season}/${episode}`
-        : `${VIDSRC_MIRRORS[0]}/embed/tv/${tmdbId}`);
+    const options = {
+      primaryColor: req.query.primaryColor,
+      autoplay: req.query.autoplay === "1" || req.query.autoplay === "true",
+      lang: req.query.lang,
+    };
+
+    const embedUrl = buildVidapiEmbed("tv", tmdbId, season, episode, options);
 
     res.json({
       success: true,
@@ -138,9 +139,13 @@ const getTvPlayer = async (req, res, next) => {
         poster: details.poster_path
           ? `https://image.tmdb.org/t/p/w500${details.poster_path}`
           : null,
+        backdrop: details.backdrop_path
+          ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
+          : null,
         numberOfSeasons: details.number_of_seasons,
         numberOfEpisodes: details.number_of_episodes,
         genres: details.genres?.map((g) => g.name) || [],
+        voteAverage: details.vote_average,
       },
       requested: {
         season,
@@ -148,7 +153,6 @@ const getTvPlayer = async (req, res, next) => {
       },
       player: {
         embedUrl,
-        allWorkingEmbeds: workingEmbeds,
         iframeHtml: `<iframe src="${embedUrl}" width="100%" height="100%" frameborder="0" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>`,
       },
     });
