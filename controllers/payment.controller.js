@@ -107,17 +107,14 @@ async function fulfillReference(reference) {
   if (!payment) throw new AppError(404, "Payment not found.");
   if (payment.status === "SUCCEEDED") return payment;
 
-  // CHANGED: resolve plan from DB plan OR amount (>= 100 → monthly)
-  /* const plan = resolvePlan(payment);
-  console.log("PAYMENT FULFILLMENT:", {
-  reference,
-  databasePlan: payment.plan,
-  databaseAmount: Number(payment.amount),
-  resolvedPlan: plan.id,
-  durationMs: plan.durationMs,
-}); */
+  // Define plan once — used for duration and logging
+  const amountKes = Number(payment.amount);
+  const plan =
+    payment.plan === "monthly" || amountKes >= 100
+      ? getPlan("monthly")
+      : getPlan("weekly");
 
-  const expectedKobo = Math.round(Number(payment.amount) * 100);
+  const expectedKobo = Math.round(amountKes * 100);
 
   const { data } = await paystack.get(
     `/transaction/verify/${encodeURIComponent(reference)}`,
@@ -166,15 +163,14 @@ async function fulfillReference(reference) {
 
     const newExpiry = new Date(base.getTime() + plan.durationMs);
 
-    // CHANGED: richer log so you can see weekly vs monthly in the terminal
-    /* console.log("FULFILL", {
+    console.log("FULFILL", {
       reference,
       dbPlan: payment.plan,
-      amount: Number(payment.amount),
+      amountKes,
       resolved: plan.id,
       durationMs: plan.durationMs,
       expiry: newExpiry.toISOString(),
-    }); */
+    });
 
     await db.user.update({
       where: { id: user.id },
