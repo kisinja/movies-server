@@ -3,7 +3,7 @@ const { AppError } = require("../middleware/error-handler");
 
 const VIDAPI_BASE = "https://vidapi.ru";
 const TMDB_BASE = "https://api.themoviedb.org/3";
-const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/original";
+const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w1280";
 const BACKDROP_CACHE_TTL_MS = 5 * 60 * 1000;
 const backdropCache = new Map();
 const backdropPending = new Map();
@@ -32,7 +32,7 @@ async function resolveBackdrop(item, type) {
       ? `${type}:imdb:${imdbId}`
       : null;
 
-  if (!cacheKey) return { tmdbId, backdrop: null };
+  if (!cacheKey) return { tmdbId, backdrop: null, overview: null };
 
   const cached = getCachedBackdrop(cacheKey);
   if (cached !== undefined) return cached;
@@ -43,6 +43,7 @@ async function resolveBackdrop(item, type) {
   const lookup = (async () => {
     let resolvedTmdbId = tmdbId;
     let backdrop = null;
+    let overview = null;
 
     try {
       if (!resolvedTmdbId && imdbId && process.env.TMDB_API_KEY) {
@@ -77,12 +78,13 @@ async function resolveBackdrop(item, type) {
         backdrop = data.backdrop_path
           ? `${TMDB_IMAGE_BASE}${data.backdrop_path}`
           : null;
+        overview = data.overview || null;
       }
     } catch (_err) {
-      // A backdrop failure is non-fatal for feed responses.
+      // A backdrop/overview failure is non-fatal for feed responses.
     }
 
-    const value = { tmdbId: resolvedTmdbId, backdrop };
+    const value = { tmdbId: resolvedTmdbId, backdrop, overview };
     setCachedBackdrop(cacheKey, value);
     if (resolvedTmdbId) {
       setCachedBackdrop(`${type}:tmdb:${resolvedTmdbId}`, value);
@@ -107,6 +109,7 @@ async function enrichFeedItems(items, type) {
     ...item,
     tmdbId: lookups[index].tmdbId,
     backdrop: lookups[index].backdrop,
+    overview: lookups[index].overview ?? item.overview,
   }));
 }
 
@@ -120,7 +123,7 @@ function mapVidapiMovie(item) {
     imdbId: item.imdb_id || null,
     title: item.title,
     year: item.year || null,
-    overview: null, // VidAPI listing doesn't provide overview
+    overview: null, // filled in from TMDB by enrichFeedItems
     poster: item.poster_url || null,
     backdrop: null,
     voteAverage: item.rating ? parseFloat(item.rating) : null,
@@ -140,7 +143,7 @@ function mapVidapiTv(item) {
     imdbId: item.imdb_id || null,
     title: item.title,
     year: item.year || null,
-    overview: null,
+    overview: null, // filled in from TMDB by enrichFeedItems
     poster: item.poster_url || null,
     backdrop: null,
     voteAverage: item.rating ? parseFloat(item.rating) : null,

@@ -7,7 +7,6 @@ const authRoutes = require("./routes/auth.routes");
 const paymentRoutes = require("./routes/payment.routes");
 const searchRoutes = require("./routes/search.routes");
 const meRoute = require("./routes/me.routes");
-const watchRoutes = require("./routes/watch.routes");
 const feedRoutes = require("./routes/feed.route");
 const { requireAuth } = require("./middleware/auth");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
@@ -39,7 +38,6 @@ app.use("/api/search", searchRoutes);
 app.use("/api", meRoute);
 app.use("/api/", playerRoutes);
 app.use('/api/feed', feedRoutes);
-app.use("/api/watch", watchRoutes);
 
 
 app.get("/", (req, res) => {

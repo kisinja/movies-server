@@ -3,6 +3,12 @@ const { AppError } = require("../middleware/error-handler");
 
 const VIDAPI_BASE = "https://vaplayer.ru";
 
+const isId = (v) => /^\d+$/.test(String(v));
+const toPos = (v) => {
+  const n = parseInt(v, 10);
+  return n > 0 ? n : null;
+};
+
 /**
  * Build VidAPI embed URL with optional customization
  */
@@ -40,9 +46,7 @@ const getMoviePlayer = async (req, res, next) => {
   try {
     const { tmdbId } = req.params;
 
-    if (!tmdbId) {
-      throw new AppError("tmdbId is required", 400);
-    }
+    if (!isId(tmdbId)) throw new AppError(400, "tmdbId must be a number.");
 
     // Get movie details from TMDB
     const { data: details } = await axios.get(
@@ -89,7 +93,7 @@ const getMoviePlayer = async (req, res, next) => {
     });
   } catch (err) {
     if (err.response?.status === 404) {
-      return next(new AppError("Movie not found on TMDB", 404));
+      return next(new AppError(404, "Movie not found on TMDB")); // and "TV show not found on TMDB"
     }
     next(err);
   }
@@ -102,12 +106,10 @@ const getMoviePlayer = async (req, res, next) => {
 const getTvPlayer = async (req, res, next) => {
   try {
     const { tmdbId } = req.params;
-    const season = req.query.season ? parseInt(req.query.season, 10) : null;
-    const episode = req.query.episode ? parseInt(req.query.episode, 10) : null;
+    const season = toPos(req.query.season);
+const episode = toPos(req.query.episode);
 
-    if (!tmdbId) {
-      throw new AppError("tmdbId is required", 400);
-    }
+    if (!isId(tmdbId)) throw new AppError(400, "tmdbId must be a number.");
 
     // Get TV show details from TMDB
     const { data: details } = await axios.get(
@@ -158,7 +160,7 @@ const getTvPlayer = async (req, res, next) => {
     });
   } catch (err) {
     if (err.response?.status === 404) {
-      return next(new AppError("TV show not found on TMDB", 404));
+      return next(new AppError(404, "Movie not found on TMDB")); // and "TV show not found on TMDB"
     }
     next(err);
   }
