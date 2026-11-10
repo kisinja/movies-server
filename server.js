@@ -8,6 +8,7 @@ const paymentRoutes = require("./routes/payment.routes");
 const searchRoutes = require("./routes/search.routes");
 const meRoute = require("./routes/me.routes");
 const feedRoutes = require("./routes/feed.route");
+const detailsRoutes = require("./routes/details.routes");
 const { requireAuth } = require("./middleware/auth");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 
@@ -36,6 +37,7 @@ app.use(morgan("dev"));
 app.use("/api/auth", authRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/search", searchRoutes);
+app.use("/api", detailsRoutes);
 app.use("/api", meRoute);
 app.use("/api/", playerRoutes);
 app.use('/api/feed', feedRoutes);
