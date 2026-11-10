@@ -18,8 +18,9 @@ const PORT = process.env.PORT || 3000;
 const allowedOrigins = [
   "https://triplem-ui.vercel.app",
   "http://localhost:5173",
-  "https://www.watchtriplem.co.ke"
-]
+  "https://watchtriplem.co.ke",
+  "https://www.watchtriplem.co.ke",
+];
 
 app.use(cors({
   origin:allowedOrigins,
