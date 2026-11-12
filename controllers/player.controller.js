@@ -148,6 +148,9 @@ const episode = toPos(req.query.episode);
         numberOfEpisodes: details.number_of_episodes,
         genres: details.genres?.map((g) => g.name) || [],
         voteAverage: details.vote_average,
+        seasons: (details.seasons || [])
+          .filter((s) => s.season_number > 0)
+          .map((s) => ({ seasonNumber: s.season_number, episodeCount: s.episode_count })),
       },
       requested: {
         season,
