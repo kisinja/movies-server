@@ -160,7 +160,7 @@ const episode = toPos(req.query.episode);
     });
   } catch (err) {
     if (err.response?.status === 404) {
-      return next(new AppError(404, "Movie not found on TMDB")); // and "TV show not found on TMDB"
+      return next(new AppError(404, "TV show not found on TMDB")); // and "TV show not found on TMDB"
     }
     next(err);
   }

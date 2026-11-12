@@ -1,4 +1,5 @@
 const express = require("express");
+const {requireAuth} = require("../middleware/auth");
 const {
   getMovieDetails,
   getTvDetails,
@@ -6,7 +7,7 @@ const {
 
 const router = express.Router();
 
-router.get("/details/movie/:tmdbId", getMovieDetails);
-router.get("/details/tv/:tmdbId", getTvDetails);
+router.get("/details/movie/:tmdbId", requireAuth,getMovieDetails);
+router.get("/details/tv/:tmdbId", requireAuth,getTvDetails);
 
 module.exports = router;

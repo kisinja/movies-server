@@ -1,6 +1,8 @@
 const axios = require("axios");
 const { AppError } = require("../middleware/error-handler");
 
+const isId = (v) => /^\d+$/.test(String(v));
+
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMG = "https://image.tmdb.org/t/p";
 
@@ -30,9 +32,7 @@ const getMovieDetails = async (req, res, next) => {
   try {
     const { tmdbId } = req.params;
 
-    if (!tmdbId) {
-      throw new AppError("Movie ID is required", 400);
-    }
+    if (!isId(tmdbId)) throw new AppError(400, "tmdbId must be a number.");
 
     const { data } = await axios.get(`${TMDB_BASE}/movie/${tmdbId}`, {
       params: {
@@ -68,7 +68,7 @@ const getMovieDetails = async (req, res, next) => {
     });
   } catch (err) {
     if (err.response?.status === 404) {
-      return next(new AppError("Movie not found", 404));
+      return next(new AppError(404,"Movie not found"));
     }
     next(err);
   }
@@ -81,9 +81,7 @@ const getTvDetails = async (req, res, next) => {
   try {
     const { tmdbId } = req.params;
 
-    if (!tmdbId) {
-      throw new AppError("TV ID is required", 400);
-    }
+    if (!isId(tmdbId)) throw new AppError(400, "tmdbId must be a number.");
 
     const { data } = await axios.get(`${TMDB_BASE}/tv/${tmdbId}`, {
       params: {
@@ -120,7 +118,7 @@ const getTvDetails = async (req, res, next) => {
     });
   } catch (err) {
     if (err.response?.status === 404) {
-      return next(new AppError("TV show not found", 404));
+      return next(new AppError(404,"TV show not found"));
     }
     next(err);
   }
