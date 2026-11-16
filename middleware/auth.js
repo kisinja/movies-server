@@ -2,7 +2,7 @@ const jwt = require("jsonwebtoken");
 const prisma = require("../lib/prisma");
 const { AppError } = require("./error-handler");
 
-const WEEKLY_PRICE_KES = 1;
+const WEEKLY_PRICE_KES = 30;
 const MONTHLY_PRICE_KES = 100;
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
