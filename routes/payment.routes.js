@@ -3,7 +3,6 @@ const { requireAuth } = require("../middleware/auth");
 const {
   initialize,
   darajaCallback,
-  webhook,
   verify,
   listPlans
 } = require("../controllers/payment.controller");
@@ -21,7 +20,5 @@ router.get("/verify/:reference", requireAuth, asyncHandler(verify));
 router.get("/plans", asyncHandler(listPlans));
 router.post("/daraja/callback", asyncHandler(darajaCallback)); // No auth
 
-
-router.post("/webhook", asyncHandler(webhook)); // verified by signature, not JWT
 
 module.exports = router;
