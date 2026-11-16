@@ -44,6 +44,14 @@ model Payment {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
 
+  // Daraja specific fields
+  phone              String?
+  checkoutRequestId  String?   @unique
+  merchantRequestId  String?
+  mpesaReceipt       String?
+  failureReason      String?
+  paidAt             DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

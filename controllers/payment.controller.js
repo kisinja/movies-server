@@ -6,16 +6,54 @@ const { getPlan, PLANS } = require("../middleware/auth");
 
 const CURRENCY = "KES";
 
-const paystack = axios.create({
-  baseURL: "https://api.paystack.co",
-  timeout: 15000,
-});
+// ======================
+// Daraja Helpers
+// ======================
+const isSandbox = process.env.DARAJA_ENV !== "production";
+const DARAJA_BASE = isSandbox
+  ? "https://sandbox.safaricom.co.ke"
+  : "https://api.safaricom.co.ke";
 
-function authHeaders() {
-  if (!process.env.PAYSTACK_SECRET_KEY) {
-    throw new Error("PAYSTACK_SECRET_KEY is not set");
+let cachedToken = null;
+let tokenExpiry = 0;
+
+async function getAccessToken() {
+  if (cachedToken && Date.now() < tokenExpiry) {
+    return cachedToken;
   }
-  return { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` };
+
+  const auth = Buffer.from(
+    `${process.env.DARAJA_CONSUMER_KEY}:${process.env.DARAJA_CONSUMER_SECRET}`
+  ).toString("base64");
+
+  const { data } = await axios.get(
+    `${DARAJA_BASE}/oauth/v1/generate?grant_type=client_credentials`,
+    { headers: { Authorization: `Basic ${auth}` } }
+  );
+
+  cachedToken = data.access_token;
+  tokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
+  return cachedToken;
+}
+
+function generatePassword() {
+  const shortcode = process.env.DARAJA_SHORTCODE;
+  const passkey = process.env.DARAJA_PASSKEY;
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[^0-9]/g, "")
+    .slice(0, 14);
+
+  const password = Buffer.from(shortcode + passkey + timestamp).toString("base64");
+  return { password, timestamp };
+}
+
+function formatPhone(phone) {
+  let p = phone.toString().replace(/\D/g, "");
+  if (p.startsWith("0")) p = "254" + p.slice(1);
+  if (p.startsWith("7") || p.startsWith("1")) p = "254" + p;
+  if (p.startsWith("+")) p = p.slice(1);
+  return p;
 }
 
 /**
@@ -33,125 +71,128 @@ function resolvePlan(payment) {
 
 /**
  * POST /api/payments/initialize
- * Body: { plan?: "weekly" | "monthly" }
+ * Body: { plan?: "weekly" | "monthly", phone: "07XXXXXXXX" }
  */
 async function initialize(req, res) {
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
   if (!user) throw new AppError(401, "Please sign in.");
 
-  const planId = req.body?.plan
+  const planId = req.body?.plan;
+  const phone = req.body?.phone;
 
-  if(!["weekly", "monthly"].includes(planId)){
+  if (!["weekly", "monthly"].includes(planId)) {
     throw new AppError(400, "Please select a valid subscription plan.");
   }
 
-  const plan = getPlan(planId);
+  if (!phone) {
+    throw new AppError(400, "Phone number is required for M-Pesa payment.");
+  }
 
-  /* console.log("PAYMENT INITIALIZATION:", {
-  requestedPlan: req.body?.plan,
-  selectedPlan: plan.id,
-  amountKes: plan.amountKes,
-  durationMs: plan.durationMs,
-  userId: user.id,
-}); */
+  const plan = getPlan(planId);
+  const formattedPhone = formatPhone(phone);
 
   const reference = `mw_${user.id}_${Date.now()}_${crypto
     .randomBytes(4)
     .toString("hex")}`;
 
-  const { data } = await paystack.post(
-    "/transaction/initialize",
-    {
-      email: user.email,
-      amount: plan.amountKes * 100,
-      currency: CURRENCY,
-      reference,
-      callback_url: process.env.PAYSTACK_CALLBACK_URL || undefined,
-      metadata: {
-        userId: user.id,
-        plan: plan.id,
-      },
-    },
-    { headers: authHeaders() },
-  );
-
-  await prisma.payment.create({
+  // Create pending payment first
+  const payment = await prisma.payment.create({
     data: {
       amount: plan.amountKes,
       currency: CURRENCY,
-      provider: "paystack",
+      provider: "daraja",
       providerPaymentId: reference,
       plan: plan.id,
       userId: user.id,
       status: "PENDING",
+      phone: formattedPhone,
     },
   });
 
-  res.status(201).json({
-    success: true,
-    reference,
-    plan: plan.id,
-    amount: plan.amountKes,
-    authorizationUrl: data.data.authorization_url,
-  });
+  try {
+    const token = await getAccessToken();
+    const { password, timestamp } = generatePassword();
+
+    const payload = {
+      BusinessShortCode: process.env.DARAJA_SHORTCODE,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: "CustomerPayBillOnline",
+      Amount: plan.amountKes,
+      PartyA: formattedPhone,
+      PartyB: process.env.DARAJA_SHORTCODE,
+      PhoneNumber: formattedPhone,
+      CallBackURL: process.env.DARAJA_CALLBACK_URL,
+      AccountReference: reference,
+      TransactionDesc: `Triple M ${plan.label || planId} Subscription`,
+    };
+
+    const { data: stkRes } = await axios.post(
+      `${DARAJA_BASE}/mpesa/stkpush/v1/processrequest`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (stkRes.ResponseCode !== "0") {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: "FAILED" },
+      });
+      throw new AppError(400, stkRes.errorMessage || "Failed to initiate M-Pesa payment");
+    }
+
+    // Save CheckoutRequestID for callback matching
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        checkoutRequestId: stkRes.CheckoutRequestID,
+        merchantRequestId: stkRes.MerchantRequestID,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      reference,
+      plan: plan.id,
+      amount: plan.amountKes,
+      message: "STK Push sent. Please check your phone and enter your M-Pesa PIN.",
+      checkoutRequestId: stkRes.CheckoutRequestID,
+    });
+  } catch (err) {
+    // Mark as failed if STK push itself fails
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { status: "FAILED" },
+    }).catch(() => {});
+    throw err;
+  }
 }
 
 /**
  * Grant access using payment.plan duration (7d or 30d).
- * Falls back to amount if plan is missing/wrong.
  */
-async function fulfillReference(reference) {
+async function fulfillReference(reference, extra = {}) {
   const payment = await prisma.payment.findUnique({
     where: { providerPaymentId: reference },
   });
   if (!payment) throw new AppError(404, "Payment not found.");
   if (payment.status === "SUCCEEDED") return payment;
 
-  // Define plan once — used for duration and logging
-  const amountKes = Number(payment.amount);
-  const plan =
-    payment.plan === "monthly" || amountKes >= 100
-      ? getPlan("monthly")
-      : getPlan("weekly");
-
-  const expectedKobo = Math.round(amountKes * 100);
-
-  const { data } = await paystack.get(
-    `/transaction/verify/${encodeURIComponent(reference)}`,
-    { headers: authHeaders() },
-  );
-  const tx = data.data;
-
-  if (tx.status === "failed" || tx.status === "abandoned") {
-    await prisma.payment.updateMany({
-      where: { id: payment.id, status: "PENDING" },
-      data: { status: "FAILED" },
-    });
-    return { ...payment, status: "FAILED" };
-  }
-
-  if (tx.status !== "success") return payment;
-
-  const paidInFull =
-    tx.currency === CURRENCY && tx.amount >= expectedKobo;
-  if (!paidInFull) {
-    console.warn(
-      `Underpaid/wrong currency for ${reference}`,
-      "got",
-      tx.amount,
-      tx.currency,
-      "expected",
-      expectedKobo,
-      "plan",
-      plan.id,
-    );
-    return payment;
-  }
+  const plan = resolvePlan(payment);
 
   await prisma.$transaction(async (db) => {
     const claimed = await db.payment.updateMany({
       where: { id: payment.id, status: "PENDING" },
-      data: { status: "SUCCEEDED" },
+      data: {
+        status: "SUCCEEDED",
+        mpesaReceipt: extra.mpesaReceipt || null,
+        paidAt: new Date(),
+      },
     });
     if (claimed.count === 0) return;
 
@@ -166,7 +207,7 @@ async function fulfillReference(reference) {
     console.log("FULFILL", {
       reference,
       dbPlan: payment.plan,
-      amountKes,
+      amountKes: payment.amount,
       resolved: plan.id,
       durationMs: plan.durationMs,
       expiry: newExpiry.toISOString(),
@@ -183,6 +224,7 @@ async function fulfillReference(reference) {
 
 /**
  * GET /api/payments/verify/:reference
+ * (Frontend can still poll this)
  */
 async function verify(req, res) {
   const payment = await prisma.payment.findUnique({
@@ -192,12 +234,11 @@ async function verify(req, res) {
     throw new AppError(404, "Payment not found.");
   }
 
-  const result = await fulfillReference(req.params.reference);
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
 
   res.json({
     success: true,
-    status: result.status,
+    status: payment.status,
     plan: payment.plan,
     subscriptionExpiresAt: user.subscriptionExpiresAt,
   });
@@ -230,31 +271,53 @@ async function listPlans(req, res) {
 }
 
 /**
- * POST /api/payments/webhook
+ * POST /api/payments/daraja/callback
+ * Called by Safaricom
  */
-async function webhook(req, res) {
-  const signature = req.headers["x-paystack-signature"];
-  const expected = crypto
-    .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY || "")
-    .update(req.rawBody || "")
-    .digest("hex");
+async function darajaCallback(req, res) {
+  // Always acknowledge quickly
+  res.json({ ResultCode: 0, ResultDesc: "Accepted" });
 
-  const valid =
-    typeof signature === "string" &&
-    signature.length === expected.length &&
-    crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
-  if (!valid) return res.sendStatus(401);
+  try {
+    const callback = req.body?.Body?.stkCallback;
+    if (!callback) return;
 
-  res.sendStatus(200);
+    const checkoutRequestId = callback.CheckoutRequestID;
+    const resultCode = callback.ResultCode;
 
-  const event = req.body;
-  if (event?.event === "charge.success" && event.data?.reference) {
-    try {
-      await fulfillReference(event.data.reference);
-    } catch (err) {
-      console.error("Webhook fulfilment failed:", err.message);
+    const payment = await prisma.payment.findFirst({
+      where: { checkoutRequestId },
+    });
+
+    if (!payment || payment.status !== "PENDING") return;
+
+    if (resultCode === 0) {
+      // Success
+      const items = callback.CallbackMetadata?.Item || [];
+      const mpesaReceipt = items.find((i) => i.Name === "MpesaReceiptNumber")?.Value;
+      const amount = items.find((i) => i.Name === "Amount")?.Value;
+
+      await fulfillReference(payment.providerPaymentId, { mpesaReceipt, amount });
+      console.log(`✅ Daraja payment success: ${payment.providerPaymentId} - ${mpesaReceipt}`);
+    } else {
+      // Failed / Cancelled
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: "FAILED",
+          failureReason: callback.ResultDesc || "Failed",
+        },
+      });
+      console.log(`❌ Daraja payment failed: ${payment.providerPaymentId} - ${callback.ResultDesc}`);
     }
+  } catch (err) {
+    console.error("Daraja callback error:", err);
   }
 }
 
-module.exports = { initialize, verify, webhook, listPlans };
+module.exports = {
+  initialize,
+  verify,
+  listPlans,
+  darajaCallback,
+};
