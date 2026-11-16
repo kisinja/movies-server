@@ -124,8 +124,8 @@ async function initialize(req, res) {
       PartyB: process.env.DARAJA_SHORTCODE,
       PhoneNumber: formattedPhone,
       CallBackURL: process.env.DARAJA_CALLBACK_URL,
-      AccountReference: reference,
-      TransactionDesc: `Triple M ${plan.label || planId} Subscription`,
+      AccountReference: plan.id === "monthly" ? "TripleMMonthly" : "TripleMWeekly",
+      TransactionDesc: `Subscription`,
     };
 
     const { data: stkRes } = await axios.post(
