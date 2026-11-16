@@ -73,7 +73,7 @@ async function stkPush({ phone, amount, accountReference, description }) {
     Timestamp: timestamp,
     TransactionType: "CustomerPayBillOnline",
     //Amount: Math.ceil(amount),
-    Amount: "1",
+    Amount: 1,
     PartyA: "254708374149",
     PartyB: process.env.DARAJA_SHORTCODE,
     PhoneNumber: formattedPhone,
