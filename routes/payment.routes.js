@@ -4,7 +4,7 @@ const {
   initialize,
   darajaCallback,
   verify,
-  listPlans
+  listPlans,
 } = require("../controllers/payment.controller");
 
 const router = express.Router();
@@ -20,5 +20,8 @@ router.get("/verify/:reference", requireAuth, asyncHandler(verify));
 router.get("/plans", asyncHandler(listPlans));
 router.post("/daraja/callback", asyncHandler(darajaCallback)); // No auth
 
+router.get("/test", (req, res) => {
+  res.json({ success: true, message: "Payment routes are working" });
+});
 
 module.exports = router;
