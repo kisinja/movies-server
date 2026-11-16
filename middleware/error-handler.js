@@ -47,16 +47,26 @@ function errorHandler(err, req, res, next) {
   }
 
   if (err.isAxiosError) {
+    console.error("Axios error:", {
+      url: err.config?.url,
+      status: err.response?.status,
+      data: err.response?.data,
+      message: err.message,
+    });
     if (err.response?.status === 404) {
       return res.status(404).json({
         success: false,
-        error: "That title was not found.",
+        error:
+          err.response?.data?.errorMessage ||
+          err.response?.data ||
+          "Upstream 404",
       });
     }
-    console.error("Upstream error:", err.response?.data || err.message);
     return res.status(502).json({
       success: false,
-      error: "An upstream service failed. Please try again.",
+      error:
+        err.response?.data?.errorMessage ||
+        "An upstream service failed. Please try again.",
     });
   }
 
@@ -64,9 +74,10 @@ function errorHandler(err, req, res, next) {
   if (statusCode && statusCode >= 400 && statusCode < 500) {
     return res.status(statusCode).json({
       success: false,
-      error: err instanceof AppError
-        ? err.message
-        : "The request could not be processed.",
+      error:
+        err instanceof AppError
+          ? err.message
+          : "The request could not be processed.",
     });
   }
 
