@@ -10,6 +10,8 @@ const meRoute = require("./routes/me.routes");
 const feedRoutes = require("./routes/feed.route");
 const detailsRoutes = require("./routes/details.routes");
 const contactRoutes = require("./routes/contact.routes");
+const publicRoutes = require("./routes/public.routes");
+
 const { requireAuth } = require("./middleware/auth");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 
@@ -24,9 +26,11 @@ const allowedOrigins = [
   "https://www.watchtriplem.co.ke",
 ];
 
-app.use(cors({
-  origin:allowedOrigins,
-}));
+app.use(
+  cors({
+    origin: allowedOrigins,
+  }),
+);
 app.use(
   express.json({
     // Paystack signs the exact raw bytes, so keep them for the webhook.
@@ -38,14 +42,14 @@ app.use(
 app.use(morgan("dev"));
 
 app.use("/api/auth", authRoutes);
-app.use('/api/contact', contactRoutes);
+app.use("/api/contact", contactRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/search", searchRoutes);
+app.use("/api/public", publicRoutes);
 app.use("/api", detailsRoutes);
 app.use("/api", meRoute);
 app.use("/api/", playerRoutes);
-app.use('/api/feed', feedRoutes);
-
+app.use("/api/feed", feedRoutes);
 
 app.get("/", (req, res) => {
   res.json({
@@ -72,10 +76,10 @@ app.get("/", (req, res) => {
         tvEpisode: "GET /api/tv/:tmdbId?season=1&episode=1",
       },
       feed: {
-  home: "GET /api/feed?limit=12",
-  movies: "GET /api/feed/movies?limit=12",
-  tv: "GET /api/feed/tv?limit=12",
-},
+        home: "GET /api/feed?limit=12",
+        movies: "GET /api/feed/movies?limit=12",
+        tv: "GET /api/feed/tv?limit=12",
+      },
     },
   });
 });
