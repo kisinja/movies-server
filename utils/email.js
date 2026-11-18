@@ -28,6 +28,13 @@ function escapeHtml(value) {
   });
 }
 
+const INBOXES = {
+  support: process.env.SUPPORT_EMAIL || "support@watchtriplem.co.ke",
+  billing: process.env.BILLING_EMAIL || "billing@watchtriplem.co.ke",
+  info: process.env.INFO_EMAIL || "info@watchtriplem.co.ke",
+};
+const DEFAULT_FROM = process.env.EMAIL_FROM || `Triple M <${INBOXES.support}>`;
+
 /**
  * Centralized Triple M email sender.
  */
@@ -36,14 +43,9 @@ async function sendEmail({
   subject,
   html,
   text,
-  replyTo = process.env.SUPPORT_EMAIL,
+  replyTo = INBOXES.support,
+  from = DEFAULT_FROM,
 }) {
-  const from = process.env.EMAIL_FROM;
-
-  if (!from) {
-    throw new Error("EMAIL_FROM is not configured");
-  }
-
   if (!to || !subject || (!html && !text)) {
     throw new Error("Recipient, subject and email content are required");
   }
@@ -171,11 +173,56 @@ Triple M
     subject: "Reset your Triple M password",
     html,
     text,
-    replyTo: process.env.SUPPORT_EMAIL,
+    replyTo: INBOXES.support,
+  });
+}
+
+const TOPIC_LABELS = {
+  support: "Support",
+  billing: "Billing",
+  info: "General",
+};
+const oneLine = (v) =>
+  String(v)
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/[<>"]/g, "")
+    .trim();
+
+async function sendContactMessageEmail({
+  name,
+  email,
+  topic,
+  subject,
+  message,
+}) {
+  const inbox = INBOXES[topic] ? topic : "support";
+  const label = TOPIC_LABELS[inbox];
+  const cleanName = oneLine(name);
+  const cleanSubject = oneLine(subject || "") || "New message";
+
+  const html = `
+<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#111;">
+  <p><strong>Topic:</strong> ${escapeHtml(label)}<br>
+  <strong>From:</strong> ${escapeHtml(cleanName)} &lt;${escapeHtml(email)}&gt;<br>
+  <strong>Subject:</strong> ${escapeHtml(cleanSubject)}</p>
+  <div style="white-space:pre-wrap;border-left:3px solid #eab54d;padding-left:12px;">${escapeHtml(message)}</div>
+  <p style="font-size:12px;color:#666;">Sent from the Triple M contact form. Reply to answer the sender.</p>
+</div>`;
+  const text = `Topic: ${label}\nFrom: ${cleanName} <${email}>\nSubject: ${cleanSubject}\n\n${message}`;
+
+  return sendEmail({
+    to: INBOXES[inbox],
+    subject: `[${label}] ${cleanSubject}`,
+    html,
+    text,
+    from: `Triple M Contact Form <${INBOXES.support}>`,
+    replyTo: `${cleanName} <${email}>`, // hitting Reply answers the visitor
   });
 }
 
 module.exports = {
+  INBOXES,
   sendEmail,
   sendPasswordResetEmail,
+  sendContactMessageEmail,
 };

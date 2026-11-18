@@ -9,6 +9,25 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BCRYPT_ROUNDS = 12;
 const TOKEN_LIFETIME = "7d"; // was 1h — short sessions force constant re-login
 
+const RESET_GENERIC_MESSAGE =
+  "If an account exists with that email, a reset link has been sent.";
+const FRONTEND_URL = (
+  process.env.APP_URL || "https://www.watchtriplem.co.ke"
+).replace(/\/+$/, "");
+
+function assertValidPassword(password) {
+  if (
+    typeof password !== "string" ||
+    Array.from(password).length < 8 ||
+    Buffer.byteLength(password, "utf8") > 72
+  ) {
+    throw new AppError(
+      400,
+      "Password must be at least 8 characters and no more than 72 bytes.",
+    );
+  }
+}
+
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
   if (!secret || Buffer.byteLength(secret) < 32) {
@@ -33,16 +52,8 @@ function validateCredentials(body, includeName = false) {
   if (email.trim().length > 254) {
     throw new AppError(400, "Email address must be 254 characters or fewer.");
   }
-  if (
-    typeof password !== "string" ||
-    Array.from(password).length < 8 ||
-    Buffer.byteLength(password, "utf8") > 72
-  ) {
-    throw new AppError(
-      400,
-      "Password must be at least 8 characters and no more than 72 bytes.",
-    );
-  }
+
+  assertValidPassword(password);
 
   let normalizedName;
   if (includeName && name !== undefined && name !== null) {
@@ -178,24 +189,17 @@ async function getMe(req, res, next) {
  * Body: { email }
  */
 async function forgotPassword(req, res) {
-  const { email } = req.body;
+  const { email } = getRequestBody(req.body);
 
-  if (!email) {
+  if (typeof email !== "string" || !email.trim())
     throw new AppError(400, "Email is required");
-  }
 
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase().trim() },
   });
 
   // Always return success (don't reveal if email exists)
-  if (!user) {
-    return res.json({
-      success: true,
-      message:
-        "If an account exists with that email, a reset link has been sent.",
-    });
-  }
+  if (!user) return res.json({ success: true, message: RESET_GENERIC_MESSAGE });
 
   const resetToken = crypto.randomBytes(32).toString("hex");
   const hashedToken = crypto
@@ -213,9 +217,14 @@ async function forgotPassword(req, res) {
     },
   });
 
-  const resetUrl = `https://watchtriplem.co.ke/reset-password?token=${resetToken}&email=${encodeURIComponent(
+  const resetUrl = `${FRONTEND_URL}/reset-password?token=${resetToken}&email=${encodeURIComponent(
     user.email,
   )}`;
+
+  res.json({ success: true, message: RESET_GENERIC_MESSAGE });
+  sendPasswordResetEmail({ to: user.email, resetUrl }).catch((err) =>
+    console.error("Failed to send reset email:", err.message),
+  );
 
   try {
     await sendPasswordResetEmail({
@@ -244,15 +253,18 @@ async function forgotPassword(req, res) {
  * Body: { token, email, password }
  */
 async function resetPassword(req, res) {
-  const { token, email, password } = req.body;
+  const { token, email, password } = getRequestBody(req.body);
 
-  if (!token || !email || !password) {
+  if (
+    typeof token !== "string" ||
+    typeof email !== "string" ||
+    !token ||
+    !email ||
+    !password
+  ) {
     throw new AppError(400, "Token, email and new password are required");
   }
-
-  if (password.length < 6) {
-    throw new AppError(400, "Password must be at least 6 characters");
-  }
+  assertValidPassword(password);
 
   const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 

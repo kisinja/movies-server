@@ -9,10 +9,12 @@ const searchRoutes = require("./routes/search.routes");
 const meRoute = require("./routes/me.routes");
 const feedRoutes = require("./routes/feed.route");
 const detailsRoutes = require("./routes/details.routes");
+const contactRoutes = require("./routes/contact.routes");
 const { requireAuth } = require("./middleware/auth");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 
 const app = express();
+app.set("trust proxy", 1); // Render is behind a proxy; needed for per-IP limits
 const PORT = process.env.PORT || 3000;
 
 const allowedOrigins = [
@@ -36,6 +38,7 @@ app.use(
 app.use(morgan("dev"));
 
 app.use("/api/auth", authRoutes);
+app.use('/api/contact', contactRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api", detailsRoutes);
