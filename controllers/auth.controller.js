@@ -1,5 +1,6 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("node:crypto");
 const prisma = require("../lib/prisma");
 const { sendPasswordResetEmail } = require("../utils/email");
 const { AppError } = require("../middleware/error-handler");
