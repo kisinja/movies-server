@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const prisma = require("../lib/prisma");
+const { sendPasswordResetEmail } = require("../utils/email");
 const { AppError } = require("../middleware/error-handler");
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -171,4 +172,116 @@ async function getMe(req, res, next) {
   }
 }
 
-module.exports = { register, login, getMe };
+/**
+ * POST /api/auth/forgot-password
+ * Body: { email }
+ */
+async function forgotPassword(req, res) {
+  const { email } = req.body;
+
+  if (!email) {
+    throw new AppError(400, "Email is required");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email: email.toLowerCase().trim() },
+  });
+
+  // Always return success (don't reveal if email exists)
+  if (!user) {
+    return res.json({
+      success: true,
+      message:
+        "If an account exists with that email, a reset link has been sent.",
+    });
+  }
+
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
+
+  const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordResetToken: hashedToken,
+      passwordResetExpires: expires,
+    },
+  });
+
+  const resetUrl = `https://watchtriplem.co.ke/reset-password?token=${resetToken}&email=${encodeURIComponent(
+    user.email,
+  )}`;
+
+  try {
+    await sendPasswordResetEmail({
+      to: user.email,
+      resetUrl,
+    });
+  } catch (err) {
+    console.error("Failed to send reset email:", err);
+    throw new AppError(
+      500,
+      "Could not send reset email. Please try again later.",
+    );
+  }
+
+  res.json({
+    success: true,
+    message:
+      "If an account exists with that email, a reset link has been sent.",
+  });
+
+  //console.log("Password reset link:", resetUrl);
+}
+
+/**
+ * POST /api/auth/reset-password
+ * Body: { token, email, password }
+ */
+async function resetPassword(req, res) {
+  const { token, email, password } = req.body;
+
+  if (!token || !email || !password) {
+    throw new AppError(400, "Token, email and new password are required");
+  }
+
+  if (password.length < 6) {
+    throw new AppError(400, "Password must be at least 6 characters");
+  }
+
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+  const user = await prisma.user.findFirst({
+    where: {
+      email: email.toLowerCase().trim(),
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { gt: new Date() },
+    },
+  });
+
+  if (!user) {
+    throw new AppError(400, "Invalid or expired reset token");
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash,
+      passwordResetToken: null,
+      passwordResetExpires: null,
+    },
+  });
+
+  res.json({
+    success: true,
+    message: "Password has been reset successfully. You can now log in.",
+  });
+}
+
+module.exports = { register, login, getMe, forgotPassword, resetPassword };

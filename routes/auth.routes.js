@@ -1,5 +1,10 @@
 const express = require("express");
-const { login, register } = require("../controllers/auth.controller");
+const {
+  login,
+  register,
+  forgotPassword,
+  resetPassword,
+} = require("../controllers/auth.controller");
 
 const router = express.Router();
 
@@ -11,5 +16,7 @@ function asyncHandler(handler) {
 
 router.post("/register", asyncHandler(register));
 router.post("/login", asyncHandler(login));
+router.post("/forgot-password", asyncHandler(forgotPassword));
+router.post("/reset-password", asyncHandler(resetPassword));
 
 module.exports = router;

@@ -28,6 +28,9 @@ model User {
   payments              Payment[]
   role                  ROLES     @default(USER)
   subscriptionExpiresAt DateTime?
+
+  passwordResetToken String?
+  passwordResetExpires DateTime?
 }
 
 model Payment {
