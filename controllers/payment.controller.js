@@ -23,12 +23,12 @@ async function getAccessToken() {
   }
 
   const auth = Buffer.from(
-    `${process.env.DARAJA_CONSUMER_KEY}:${process.env.DARAJA_CONSUMER_SECRET}`
+    `${process.env.DARAJA_CONSUMER_KEY}:${process.env.DARAJA_CONSUMER_SECRET}`,
   ).toString("base64");
 
   const { data } = await axios.get(
     `${DARAJA_BASE}/oauth/v1/generate?grant_type=client_credentials`,
-    { headers: { Authorization: `Basic ${auth}` } }
+    { headers: { Authorization: `Basic ${auth}` } },
   );
 
   cachedToken = data.access_token;
@@ -44,7 +44,9 @@ function generatePassword() {
     .replace(/[^0-9]/g, "")
     .slice(0, 14);
 
-  const password = Buffer.from(shortcode + passkey + timestamp).toString("base64");
+  const password = Buffer.from(shortcode + passkey + timestamp).toString(
+    "base64",
+  );
   return { password, timestamp };
 }
 
@@ -124,7 +126,8 @@ async function initialize(req, res) {
       PartyB: process.env.DARAJA_SHORTCODE,
       PhoneNumber: formattedPhone,
       CallBackURL: process.env.DARAJA_CALLBACK_URL,
-      AccountReference: plan.id === "monthly" ? "TripleMMonthly" : "TripleMWeekly",
+      AccountReference:
+        plan.id === "monthly" ? "TripleMMonthly" : "TripleMWeekly",
       TransactionDesc: `Subscription`,
     };
 
@@ -136,7 +139,7 @@ async function initialize(req, res) {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
     if (stkRes.ResponseCode !== "0") {
@@ -144,7 +147,10 @@ async function initialize(req, res) {
         where: { id: payment.id },
         data: { status: "FAILED" },
       });
-      throw new AppError(400, stkRes.errorMessage || "Failed to initiate M-Pesa payment");
+      throw new AppError(
+        400,
+        stkRes.errorMessage || "Failed to initiate M-Pesa payment",
+      );
     }
 
     // Save CheckoutRequestID for callback matching
@@ -161,15 +167,18 @@ async function initialize(req, res) {
       reference,
       plan: plan.id,
       amount: plan.amountKes,
-      message: "STK Push sent. Please check your phone and enter your M-Pesa PIN.",
+      message:
+        "STK Push sent. Please check your phone and enter your M-Pesa PIN.",
       checkoutRequestId: stkRes.CheckoutRequestID,
     });
   } catch (err) {
     // Mark as failed if STK push itself fails
-    await prisma.payment.update({
-      where: { id: payment.id },
-      data: { status: "FAILED" },
-    }).catch(() => {});
+    await prisma.payment
+      .update({
+        where: { id: payment.id },
+        data: { status: "FAILED" },
+      })
+      .catch(() => {});
     throw err;
   }
 }
@@ -295,11 +304,18 @@ async function darajaCallback(req, res) {
     if (resultCode === 0) {
       // Success
       const items = callback.CallbackMetadata?.Item || [];
-      const mpesaReceipt = items.find((i) => i.Name === "MpesaReceiptNumber")?.Value;
+      const mpesaReceipt = items.find(
+        (i) => i.Name === "MpesaReceiptNumber",
+      )?.Value;
       const amount = items.find((i) => i.Name === "Amount")?.Value;
 
-      await fulfillReference(payment.providerPaymentId, { mpesaReceipt, amount });
-      console.log(`✅ Daraja payment success: ${payment.providerPaymentId} - ${mpesaReceipt}`);
+      await fulfillReference(payment.providerPaymentId, {
+        mpesaReceipt,
+        amount,
+      });
+      console.log(
+        `✅ Daraja payment success: ${payment.providerPaymentId} - ${mpesaReceipt}`,
+      );
     } else {
       // Failed / Cancelled
       await prisma.payment.update({
@@ -309,16 +325,49 @@ async function darajaCallback(req, res) {
           failureReason: callback.ResultDesc || "Failed",
         },
       });
-      console.log(`❌ Daraja payment failed: ${payment.providerPaymentId} - ${callback.ResultDesc}`);
+      console.log(
+        `❌ Daraja payment failed: ${payment.providerPaymentId} - ${callback.ResultDesc}`,
+      );
     }
   } catch (err) {
     console.error("Daraja callback error:", err);
   }
 }
 
+/**
+ * GET /api/payments/history
+ * Returns the current user's payment history
+ */
+async function history(req, res) {
+  const payments = await prisma.payment.findMany({
+    where: { userId: req.userId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      amount: true,
+      currency: true,
+      plan: true,
+      status: true,
+      provider: true,
+      mpesaReceipt: true,
+      phone: true,
+      paidAt: true,
+      createdAt: true,
+      failureReason: true,
+    },
+  });
+
+  res.json({
+    success: true,
+    count: payments.length,
+    payments,
+  });
+};
+
 module.exports = {
   initialize,
   verify,
   listPlans,
   darajaCallback,
+  history,
 };

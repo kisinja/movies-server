@@ -5,6 +5,7 @@ const {
   darajaCallback,
   verify,
   listPlans,
+  history,
 } = require("../controllers/payment.controller");
 
 const router = express.Router();
@@ -18,6 +19,7 @@ function asyncHandler(handler) {
 router.post("/initialize", requireAuth, asyncHandler(initialize));
 router.get("/verify/:reference", requireAuth, asyncHandler(verify));
 router.get("/plans", asyncHandler(listPlans));
+router.get("/history", requireAuth, asyncHandler(history));
 router.post("/daraja/callback", asyncHandler(darajaCallback)); // No auth
 
 router.get("/test", (req, res) => {
