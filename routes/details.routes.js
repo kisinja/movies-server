@@ -1,5 +1,4 @@
 const express = require("express");
-const {requireAuth} = require("../middleware/auth");
 const {
   getMovieDetails,
   getTvDetails,
@@ -7,7 +6,8 @@ const {
 
 const router = express.Router();
 
-router.get("/details/movie/:tmdbId", requireAuth,getMovieDetails);
-router.get("/details/tv/:tmdbId", requireAuth,getTvDetails);
+// Public, read-only title info (needed for SEO and logged-out visitors)
+router.get("/details/movie/:tmdbId", getMovieDetails);
+router.get("/details/tv/:tmdbId", getTvDetails);
 
 module.exports = router;
