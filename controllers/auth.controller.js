@@ -191,15 +191,18 @@ async function getMe(req, res, next) {
 async function forgotPassword(req, res) {
   const { email } = getRequestBody(req.body);
 
-  if (typeof email !== "string" || !email.trim())
+  if (typeof email !== "string" || !email.trim()) {
     throw new AppError(400, "Email is required");
+  }
 
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase().trim() },
   });
 
   // Always return success (don't reveal if email exists)
-  if (!user) return res.json({ success: true, message: RESET_GENERIC_MESSAGE });
+  if (!user) {
+    return res.json({ success: true, message: RESET_GENERIC_MESSAGE });
+  }
 
   const resetToken = crypto.randomBytes(32).toString("hex");
   const hashedToken = crypto
@@ -207,13 +210,11 @@ async function forgotPassword(req, res) {
     .update(resetToken)
     .digest("hex");
 
-  const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-
   await prisma.user.update({
     where: { id: user.id },
     data: {
       passwordResetToken: hashedToken,
-      passwordResetExpires: expires,
+      passwordResetExpires: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
     },
   });
 
@@ -221,31 +222,12 @@ async function forgotPassword(req, res) {
     user.email,
   )}`;
 
+  // Reply first, send in the background.
   res.json({ success: true, message: RESET_GENERIC_MESSAGE });
-  sendPasswordResetEmail({ to: user.email, resetUrl }).catch((err) =>
-    console.error("Failed to send reset email:", err.message),
-  );
 
-  try {
-    await sendPasswordResetEmail({
-      to: user.email,
-      resetUrl,
-    });
-  } catch (err) {
-    console.error("Failed to send reset email:", err);
-    throw new AppError(
-      500,
-      "Could not send reset email. Please try again later.",
-    );
-  }
-
-  res.json({
-    success: true,
-    message:
-      "If an account exists with that email, a reset link has been sent.",
+  sendPasswordResetEmail({ to: user.email, resetUrl }).catch((err) => {
+    console.error("Failed to send reset email:", err.message);
   });
-
-  //console.log("Password reset link:", resetUrl);
 }
 
 /**
