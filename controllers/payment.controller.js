@@ -3,6 +3,10 @@ const axios = require("axios");
 const prisma = require("../lib/prisma");
 const { AppError } = require("../middleware/error-handler");
 const { getPlan, PLANS } = require("../middleware/auth");
+const {
+  resolvePaymentPlan,
+  extendSubscription,
+} = require("../utils/subscription");
 
 const CURRENCY = "KES";
 
@@ -56,19 +60,6 @@ function formatPhone(phone) {
   if (p.startsWith("7") || p.startsWith("1")) p = "254" + p;
   if (p.startsWith("+")) p = p.slice(1);
   return p;
-}
-
-/**
- * Resolve plan from DB field, with amount fallback.
- * KES 100+ → monthly (30 days), otherwise weekly (7 days).
- */
-function resolvePlan(payment) {
-  if (payment.plan === "monthly") return getPlan("monthly");
-  if (payment.plan === "weekly") return getPlan("weekly");
-
-  const kes = Number(payment.amount);
-  if (kes >= 100) return getPlan("monthly");
-  return getPlan("weekly");
 }
 
 /**
@@ -193,7 +184,7 @@ async function fulfillReference(reference, extra = {}) {
   if (!payment) throw new AppError(404, "Payment not found.");
   if (payment.status === "SUCCEEDED") return payment;
 
-  const plan = resolvePlan(payment);
+  const plan = resolvePaymentPlan(payment);
 
   await prisma.$transaction(async (db) => {
     const claimed = await db.payment.updateMany({
@@ -206,13 +197,11 @@ async function fulfillReference(reference, extra = {}) {
     });
     if (claimed.count === 0) return;
 
-    const user = await db.user.findUnique({ where: { id: payment.userId } });
-    const base =
-      user.subscriptionExpiresAt && user.subscriptionExpiresAt > new Date()
-        ? user.subscriptionExpiresAt
-        : new Date();
-
-    const newExpiry = new Date(base.getTime() + plan.durationMs);
+    const newExpiry = await extendSubscription(
+      db,
+      payment.userId,
+      plan.durationMs,
+    );
 
     console.log("FULFILL", {
       reference,
@@ -223,10 +212,6 @@ async function fulfillReference(reference, extra = {}) {
       expiry: newExpiry.toISOString(),
     });
 
-    await db.user.update({
-      where: { id: user.id },
-      data: { subscriptionExpiresAt: newExpiry },
-    });
   });
 
   return { ...payment, status: "SUCCEEDED", plan: plan.id };

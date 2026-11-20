@@ -1,5 +1,6 @@
 const axios = require("axios");
 const { AppError } = require("../middleware/error-handler");
+const { getBlockedTitleSet } = require("../utils/blocked-titles");
 
 /**
  * Map a TMDB movie result to a clean response object
@@ -97,6 +98,11 @@ const search = async (req, res, next) => {
       results = results.concat((data.results || []).slice(0, limit).map(mapTv));
     }
 
+    const blockedTitles = await getBlockedTitleSet();
+    results = results.filter(
+      (item) => !blockedTitles.has(`${item.type}:${item.tmdbId}`),
+    );
+
     // Highest popularity first
     results.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
@@ -137,7 +143,11 @@ const searchMovies = async (req, res, next) => {
       },
     );
 
-    const results = (data.results || []).slice(0, limit).map(mapMovie);
+    const blockedTitles = await getBlockedTitleSet();
+    const results = (data.results || [])
+      .slice(0, limit)
+      .map(mapMovie)
+      .filter((item) => !blockedTitles.has(`movie:${item.tmdbId}`));
 
     res.json({
       success: true,
@@ -173,7 +183,11 @@ const searchTv = async (req, res, next) => {
       },
     });
 
-    const results = (data.results || []).slice(0, limit).map(mapTv);
+    const blockedTitles = await getBlockedTitleSet();
+    const results = (data.results || [])
+      .slice(0, limit)
+      .map(mapTv)
+      .filter((item) => !blockedTitles.has(`tv:${item.tmdbId}`));
 
     res.json({
       success: true,

@@ -1,5 +1,6 @@
 const { AppError } = require("../middleware/error-handler");
 const { sendContactMessageEmail } = require("../utils/email");
+const prisma = require("../lib/prisma");
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TOPICS = ["support", "billing", "info"];
@@ -36,14 +37,21 @@ async function sendContactMessage(req, res) {
   if (message.length < 10 || message.length > 3000)
     throw new AppError(400, "Message must be between 10 and 3000 characters.");
 
+  await prisma.contactMessage.create({
+    data: {
+      name,
+      email: email.toLowerCase(),
+      topic,
+      subject: subject || null,
+      message,
+    },
+    select: { id: true },
+  });
+
   try {
     await sendContactMessageEmail({ name, email, topic, subject, message });
   } catch (err) {
     console.error("Failed to deliver contact message:", err);
-    throw new AppError(
-      503,
-      "We couldn't send your message right now. Please try again later.",
-    );
   }
 
   res.json({ success: true, message: "Thanks! We'll be in touch." });

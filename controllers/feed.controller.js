@@ -1,5 +1,6 @@
 const axios = require("axios");
 const { AppError } = require("../middleware/error-handler");
+const { getBlockedTitleSet } = require("../utils/blocked-titles");
 
 const VIDAPI_BASE = "https://vidapi.ru";
 const TMDB_BASE = "https://api.themoviedb.org/3";
@@ -105,12 +106,18 @@ async function enrichFeedItems(items, type) {
     items.map((item) => resolveBackdrop(item, type))
   );
 
-  return items.map((item, index) => ({
-    ...item,
-    tmdbId: lookups[index].tmdbId,
-    backdrop: lookups[index].backdrop,
-    overview: lookups[index].overview ?? item.overview,
-  }));
+  const blockedTitles = await getBlockedTitleSet();
+  return items
+    .map((item, index) => ({
+      ...item,
+      tmdbId: lookups[index].tmdbId,
+      backdrop: lookups[index].backdrop,
+      overview: lookups[index].overview ?? item.overview,
+    }))
+    .filter(
+      (item) =>
+        !item.tmdbId || !blockedTitles.has(`${type}:${item.tmdbId}`),
+    );
 }
 
 /**

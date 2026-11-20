@@ -11,9 +11,12 @@ const feedRoutes = require("./routes/feed.route");
 const detailsRoutes = require("./routes/details.routes");
 const contactRoutes = require("./routes/contact.routes");
 const publicRoutes = require("./routes/public.routes");
+const adminRoutes = require("./routes/admin.routes");
 
 const { requireAuth } = require("./middleware/auth");
+const { requireAdmin } = require("./middleware/admin");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
+const { rateLimit } = require("./middleware/rate-limit");
 
 const app = express();
 app.set("trust proxy", 1); // Render is behind a proxy; needed for per-IP limits
@@ -50,6 +53,12 @@ app.use("/api", detailsRoutes);
 app.use("/api", meRoute);
 app.use("/api/", playerRoutes);
 app.use("/api/feed", feedRoutes);
+const adminLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 300,
+  message: "Too many admin requests. Please try again later.",
+});
+app.use("/api/admin", adminLimiter, requireAuth, requireAdmin, adminRoutes);
 
 app.get("/", (req, res) => {
   res.json({

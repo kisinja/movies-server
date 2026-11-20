@@ -1,5 +1,6 @@
 const axios = require("axios");
 const { AppError } = require("../middleware/error-handler");
+const { isTitleBlocked } = require("../utils/blocked-titles");
 
 const isId = (v) => /^\d+$/.test(String(v));
 
@@ -33,6 +34,9 @@ const getMovieDetails = async (req, res, next) => {
     const { tmdbId } = req.params;
 
     if (!isId(tmdbId)) throw new AppError(400, "tmdbId must be a number.");
+    if (await isTitleBlocked("movie", tmdbId)) {
+      throw new AppError(404, "This title is not available.");
+    }
 
     const { data } = await axios.get(`${TMDB_BASE}/movie/${tmdbId}`, {
       params: {
@@ -82,6 +86,9 @@ const getTvDetails = async (req, res, next) => {
     const { tmdbId } = req.params;
 
     if (!isId(tmdbId)) throw new AppError(400, "tmdbId must be a number.");
+    if (await isTitleBlocked("tv", tmdbId)) {
+      throw new AppError(404, "This title is not available.");
+    }
 
     const { data } = await axios.get(`${TMDB_BASE}/tv/${tmdbId}`, {
       params: {

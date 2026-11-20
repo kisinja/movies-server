@@ -1,5 +1,6 @@
 const axios = require("axios");
 const { AppError } = require("../middleware/error-handler");
+const { isTitleBlocked } = require("../utils/blocked-titles");
 
 const VIDAPI_BASE = "https://vaplayer.ru";
 
@@ -47,6 +48,9 @@ const getMoviePlayer = async (req, res, next) => {
     const { tmdbId } = req.params;
 
     if (!isId(tmdbId)) throw new AppError(400, "tmdbId must be a number.");
+    if (await isTitleBlocked("movie", tmdbId)) {
+      throw new AppError(404, "This title is not available.");
+    }
 
     // Get movie details from TMDB
     const { data: details } = await axios.get(
@@ -110,6 +114,9 @@ const getTvPlayer = async (req, res, next) => {
 const episode = toPos(req.query.episode);
 
     if (!isId(tmdbId)) throw new AppError(400, "tmdbId must be a number.");
+    if (await isTitleBlocked("tv", tmdbId)) {
+      throw new AppError(404, "This title is not available.");
+    }
 
     // Get TV show details from TMDB
     const { data: details } = await axios.get(

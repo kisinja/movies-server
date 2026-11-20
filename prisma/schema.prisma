@@ -18,6 +18,29 @@ enum ROLES {
   USER
 }
 
+enum MessageStatus {
+  NEW
+  RESOLVED
+}
+
+enum ContactTopic {
+  support
+  billing
+  info
+}
+
+enum AuditTargetType {
+  user
+  payment
+  message
+  title
+}
+
+enum TitleType {
+  movie
+  tv
+}
+
 model User {
   id                    String    @id @default(uuid())
   email                 String    @unique
@@ -29,8 +52,60 @@ model User {
   role                  ROLES     @default(USER)
   subscriptionExpiresAt DateTime?
 
-  passwordResetToken String?
+  passwordResetToken   String?
   passwordResetExpires DateTime?
+
+  auditLogs        AuditLog[]       @relation("AuditAdmin")
+  blockedTitles    BlockedTitle[]   @relation("BlockedTitleCreator")
+  resolvedMessages ContactMessage[] @relation("MessageResolver")
+
+  @@index([createdAt])
+  @@index([subscriptionExpiresAt])
+}
+
+model AuditLog {
+  id         String          @id @default(uuid())
+  adminId    String
+  admin      User            @relation("AuditAdmin", fields: [adminId], references: [id], onDelete: Restrict)
+  action     String
+  targetType AuditTargetType
+  targetId   String
+  details    Json?
+  createdAt  DateTime        @default(now())
+
+  @@index([createdAt])
+  @@index([adminId])
+  @@index([targetType, targetId])
+}
+
+model ContactMessage {
+  id           String        @id @default(uuid())
+  name         String
+  email        String
+  topic        ContactTopic
+  subject      String?
+  message      String        @db.Text
+  status       MessageStatus @default(NEW)
+  createdAt    DateTime      @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?         @relation("MessageResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([resolvedById])
+}
+
+model BlockedTitle {
+  id          String    @id @default(uuid())
+  type        TitleType
+  tmdbId      Int
+  reason      String?
+  createdById String
+  createdBy   User      @relation("BlockedTitleCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime  @default(now())
+
+  @@unique([type, tmdbId])
+  @@index([createdById])
 }
 
 model Payment {
@@ -48,16 +123,17 @@ model Payment {
   user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   // Daraja specific fields
-  phone              String?
-  checkoutRequestId  String?   @unique
-  merchantRequestId  String?
-  mpesaReceipt       String?
-  failureReason      String?
-  paidAt             DateTime?
+  phone             String?
+  checkoutRequestId String?   @unique
+  merchantRequestId String?
+  mpesaReceipt      String?
+  failureReason     String?
+  paidAt            DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([status])
+  @@index([createdAt])
 }
